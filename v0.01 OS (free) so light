@@ -1,0 +1,50 @@
+#v0.01 free
+import os
+import sys
+import time
+
+desktop = []
+
+print("loading...")
+time.sleep(2)
+print("----- welcome to alpha OS -----")
+
+while True:
+    command = input("type 'help' for commands or type a command: ").strip()
+
+    if command == "help":
+        print("""
+help      show commands
+offline   exit OS
+reboot    restart OS
+ldir      create folder
+pdir      delete folder
+""")
+
+    elif command == "offline":
+        print("shutting down...")
+        sys.exit()
+
+    elif command == "reboot":
+        print("rebooting...")
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
+    elif command == "ldir":
+        name = input("folder name: ").strip()
+        desktop.append(name)
+        print(f"folder '{name}' created")
+        print("---- DESKTOP ----")
+        print(desktop)
+
+    elif command == "pdir":
+        name = input("folder name to delete: ").strip()
+        if name in desktop:
+            desktop.remove(name)
+            print(f"folder '{name}' deleted")
+        else:
+            print("folder not found")
+        print("---- DESKTOP ----")
+        print(desktop)
+
+    else:
+        print("unknown command")
