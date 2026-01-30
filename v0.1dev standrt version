@@ -1,0 +1,102 @@
+import os
+import sys
+import time
+
+filesystem = {
+    "desktop": []
+}
+
+cwd = "desktop"
+
+# ---- APPS ----
+def calculator():
+    print("calculator app")
+    a = int(input("a: "))
+    b = int(input("b: "))
+    print("result =", a + b)
+
+def notepad():
+    print("notepad app (type 'exit' to quit)")
+    while True:
+        text = input("> ")
+        if text == "exit":
+            break
+
+apps = {
+    "calc": calculator,
+    "note": notepad
+}
+
+print("loading...")
+time.sleep(2)
+print("----- welcome to alpha OS -----")
+
+while True:
+    raw = input(f"alphaOS:{cwd}> ").strip()
+    parts = raw.split()
+
+    if not parts:
+        continue
+
+    command = parts[0]
+
+    if command == "help":
+        print("""
+help              show commands
+offline           exit OS
+reboot            restart OS
+ldir              create folder
+pdir              delete folder
+ps <name>          open app or folder
+ls                list folder
+cd ..             go back
+""")
+
+    elif command == "offline":
+        sys.exit()
+
+    elif command == "reboot":
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
+    elif command == "ls":
+        print(filesystem[cwd])
+
+    elif command == "ldir":
+        name = input("folder name: ").strip()
+        filesystem[cwd].append(name)
+        filesystem[name] = []
+        print(f"folder '{name}' created")
+
+    elif command == "pdir":
+        name = input("folder name to delete: ").strip()
+        if name in filesystem[cwd]:
+            filesystem[cwd].remove(name)
+            del filesystem[name]
+            print(f"folder '{name}' deleted")
+        else:
+            print("folder not found")
+
+    elif command == "cd":
+        if len(parts) == 2 and parts[1] == "..":
+            cwd = "desktop"
+
+    elif command == "ps":
+        if len(parts) < 2:
+            print("usage: ps <app|folder>")
+        else:
+            name = parts[1]
+
+            if name in apps:
+                print(f"starting app '{name}'")
+                apps[name]()
+                print(f"app '{name}' exited")
+
+            elif name in filesystem[cwd]:
+                cwd = name
+                print(f"entered folder '{name}'")
+
+            else:
+                print("app or folder not found")
+
+    else:
+        print("unknown command")
