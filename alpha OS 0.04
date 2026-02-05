@@ -1,0 +1,333 @@
+import sys
+import os
+from PyQt5.QtWidgets import (
+    QApplication, QWidget, QVBoxLayout, QLineEdit, QTextEdit,
+    QPushButton, QLabel, QGridLayout, QScrollArea
+)
+from PyQt5.QtCore import Qt
+
+# ================= FILESYSTEM =================
+filesystem = {
+    "desktop": {
+        "projects": {}
+    },
+    "storage": {
+        "apps.desp": {
+            "calc": {},
+            "note": {},
+            "mini-gpt-o5": {}
+        },
+        "backup.def": {}
+    }
+}
+
+path = ["desktop"]
+
+def current_dir():
+    ref = filesystem
+    for p in path:
+        ref = ref[p]
+    return ref
+
+def is_archive(name):
+    return name.endswith(".def")
+
+def is_executable(name):
+    return name.endswith(".desp") or name in current_dir()
+
+def create_file(name):
+    ref = current_dir()
+    if name in ref:
+        return False, "Already exists"
+    ref[name] = {}
+    return True, f"File '{name}' created"
+
+def create_folder(name):
+    ref = current_dir()
+    if name in ref:
+        return False, "Already exists"
+    ref[name] = {}
+    return True, f"Folder '{name}' created"
+
+# ================= APPS =================
+def calculator(output):
+    output.append("Calculator ready. Type math or 'exit'.")
+    def handle(inp):
+        if inp == "exit":
+            output.append("Calculator closed")
+            return "exit"
+        try:
+            result = eval(inp, {"__builtins__": None}, {})
+            output.append(f"= {result}")
+        except:
+            output.append("Error")
+    return handle
+
+def notepad(output):
+    output.append("Notepad opened. Type text. 'exit' to close.")
+    def handle(inp):
+        if inp == "exit":
+            output.append("Notepad closed")
+            return "exit"
+        output.append(inp)
+    return handle
+
+def mini_gpt_o5(output):
+    output.append("mini-GPT o5 online. 'exit' to quit.")
+    def handle(inp):
+        if inp == "exit":
+            output.append("mini-GPT shutting down")
+            return "exit"
+        output.append("mini-GPT: still learning...")
+    return handle
+
+apps = {
+    "calc": calculator,
+    "note": notepad,
+    "mini-gpt-o5": mini_gpt_o5
+}
+
+# ================= HOME SCREEN =================
+class HomeScreen(QWidget):
+    def __init__(self, launch):
+        super().__init__()
+        self.launch = launch
+
+        layout = QGridLayout()
+        layout.setSpacing(20)
+
+        self.setStyleSheet("""
+            QWidget { background-color: #1e1e1e; }
+            QPushButton {
+                background-color: #3a3a3a;
+                color: white;
+                font-size: 16px;
+                padding: 25px;
+                border-radius: 12px;
+            }
+            QPushButton:hover {
+                background-color: #555;
+            }
+        """)
+
+        # Buttons: Calculator, Notepad, mini-GPT, Shell, Files, Sign In, Log In
+        buttons = [
+            ("Calculator", "calc"),
+            ("Notepad", "note"),
+            ("mini-GPT", "mini-gpt-o5"),
+            ("Shell", "shell"),
+            ("Files", "files"),
+            ("Sign In (soon)", "sign_in"),
+            ("Log In (soon)", "log_in")
+        ]
+
+        for i, (name, app) in enumerate(buttons):
+            btn = QPushButton(name)
+            btn.clicked.connect(lambda _, a=app: self.launch(a))
+            layout.addWidget(btn, i // 2, i % 2)
+
+        self.setLayout(layout)
+
+# ================= FILES GUI =================
+class FilesScreen(QWidget):
+    def __init__(self, back_callback):
+        super().__init__()
+        self.back_callback = back_callback
+        self.layout = QVBoxLayout()
+        self.label = QLabel()
+        self.layout.addWidget(self.label)
+
+        self.scroll = QScrollArea()
+        self.scroll_widget = QWidget()
+        self.scroll_layout = QVBoxLayout()
+        self.scroll_widget.setLayout(self.scroll_layout)
+        self.scroll.setWidget(self.scroll_widget)
+        self.scroll.setWidgetResizable(True)
+        self.layout.addWidget(self.scroll)
+
+        self.back_btn = QPushButton("Back")
+        self.back_btn.clicked.connect(self.back)
+        self.layout.addWidget(self.back_btn)
+
+        self.setLayout(self.layout)
+        self.update_view()
+
+    def update_view(self):
+        self.label.setText(f"Path: {'/'.join(path)}")
+        # Clear previous buttons
+        for i in reversed(range(self.scroll_layout.count())):
+            self.scroll_layout.itemAt(i).widget().setParent(None)
+
+        ref = current_dir()
+        for name in ref:
+            btn = QPushButton(name + (" [ARCHIVE]" if is_archive(name) else ""))
+            btn.clicked.connect(lambda _, n=name: self.enter(n))
+            self.scroll_layout.addWidget(btn)
+
+    def enter(self, name):
+        ref = current_dir()
+        if is_archive(name):
+            return
+        elif isinstance(ref[name], dict):
+            path.append(name)
+            self.update_view()
+
+    def back(self):
+        if len(path) > 1:
+            path.pop()
+            self.update_view()
+        else:
+            self.back_callback()
+
+# ================= MAIN OS =================
+class AlphaOS(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("AlphaOS Beta")
+        self.setGeometry(100, 100, 700, 450)
+
+        self.layout = QVBoxLayout()
+
+        self.title = QLabel("AlphaOS")
+        self.title.setAlignment(Qt.AlignCenter)
+        self.title.setStyleSheet("font-size:18px; font-weight:bold;")
+
+        self.home = HomeScreen(self.launch_app)
+        self.files_screen = FilesScreen(self.show_home)
+
+        self.output = QTextEdit()
+        self.output.setReadOnly(True)
+
+        self.input_line = QLineEdit()
+        self.input_line.returnPressed.connect(self.handle_input)
+
+        self.layout.addWidget(self.title)
+        self.layout.addWidget(self.home)
+        self.layout.addWidget(self.files_screen)
+        self.layout.addWidget(self.output)
+        self.layout.addWidget(self.input_line)
+
+        self.setLayout(self.layout)
+
+        self.current_app = None
+        self.show_home()
+
+    # ---------- UI MODES ----------
+    def show_home(self):
+        self.home.show()
+        self.files_screen.hide()
+        self.output.hide()
+        self.input_line.hide()
+
+    def show_terminal(self):
+        self.home.hide()
+        self.files_screen.hide()
+        self.output.show()
+        self.input_line.show()
+        self.prompt()
+
+    def show_files(self):
+        self.home.hide()
+        self.files_screen.show()
+        self.output.hide()
+        self.input_line.hide()
+        self.files_screen.update_view()
+
+    def prompt(self):
+        self.output.append(f"\nAlphaOS:{'/'.join(path)}> ")
+
+    # ---------- APP LAUNCH ----------
+    def launch_app(self, name):
+        if name == "shell":
+            self.show_terminal()
+            self.output.append("Shell ready. Type commands. 'exit' to return home.")
+        elif name == "files":
+            self.show_files()
+        elif name == "sign_in":
+            self.show_terminal()
+            self.output.append("Sign In (soon) feature coming...")
+        elif name == "log_in":
+            self.show_terminal()
+            self.output.append("Log In (soon) feature coming...")
+        elif name in apps:
+            self.show_terminal()
+            self.output.append(f"Launching {name}...")
+            self.current_app = apps[name](self.output)
+
+    # ---------- INPUT ----------
+    def handle_input(self):
+        text = self.input_line.text().strip()
+        self.input_line.clear()
+        self.output.append(text)
+
+        # App input
+        if self.current_app:
+            result = self.current_app(text)
+            if result == "exit":
+                self.current_app = None
+                self.show_home()
+            return
+
+        # Shell commands
+        parts = text.split()
+        if not parts:
+            return
+        cmd = parts[0]
+
+        if cmd == "help":
+            self.output.append("help | fg | dds <dir> | ps <app> | dd <file/folder> | reboot | offline")
+        elif cmd == "fg":
+            for name in current_dir():
+                if is_archive(name):
+                    self.output.append(f"{name} [ARCHIVE]")
+                elif is_executable(name):
+                    self.output.append(f"{name} [EXEC]")
+                else:
+                    self.output.append(name)
+        elif cmd == "dds":
+            if len(parts) < 2:
+                self.output.append("usage: dds <target>")
+                return
+            if parts[1] == ".." and len(path) > 1:
+                path.pop()
+            elif parts[1] in current_dir():
+                if is_archive(parts[1]):
+                    self.output.append("cannot open archive")
+                else:
+                    path.append(parts[1])
+            else:
+                self.output.append("not found")
+        elif cmd == "ps":
+            if len(parts) < 2:
+                self.output.append("usage: ps <app>")
+                return
+            self.launch_app(parts[1])
+        elif cmd == "dd":
+            if len(parts) < 2:
+                self.output.append("usage: dd <name> [-d for folder]")
+                return
+            name = parts[1]
+            if len(parts) > 2 and parts[2] == "-d":
+                ok, msg = create_folder(name)
+            else:
+                ok, msg = create_file(name)
+            self.output.append(msg)
+        elif cmd == "reboot":
+            QApplication.quit()
+            os.execl(sys.executable, sys.executable, *sys.argv)
+        elif cmd == "offline":
+            self.close()
+        elif cmd == "exit":
+            # Exit shell
+            self.show_home()
+        else:
+            self.output.append("unknown command")
+
+        self.prompt()
+
+# ================= BOOT =================
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    osys = AlphaOS()
+    osys.show()
+    sys.exit(app.exec_())
