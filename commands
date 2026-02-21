@@ -1,0 +1,15 @@
+command functions
+help        → show commands
+ls          → list directory
+cd <dir>    → change directory
+cd ..       → go back
+mkdir <n>   → create folder
+touch <n>   → create file
+rm <n>      → delete file/folder
+run <app>   → launch executable
+ps          → show running apps
+chmod <p> <file> → change permissions
+pwd         → show path
+clear       → clear terminal
+reboot      → restart AlphaOS
+exit        → leave shell/app
