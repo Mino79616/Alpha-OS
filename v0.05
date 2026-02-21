@@ -1,0 +1,341 @@
+# ============================
+# AlphaOS v0.5- Enhanced System
+# ============================
+
+import sys
+import os
+import json
+import math
+from PyQt5.QtWidgets import (
+    QApplication, QWidget, QVBoxLayout, QLineEdit,
+    QTextEdit, QPushButton, QLabel, QGridLayout, QScrollArea
+)
+from PyQt5.QtCore import Qt, QTimer
+
+# ================= DISK =================
+
+DISK = "alpha_disk.json"
+
+def default_fs():
+    return {
+        "type": "folder",
+        "perm": "777",
+        "content": {
+            "desktop": {"type": "folder","perm":"777","content":{}},
+            "storage": {
+                "type":"folder","perm":"777","content":{
+                    "apps":{
+                        "type":"folder","perm":"755","content":{
+                            "calc.desp":{"type":"exec"},
+                            "note.desp":{"type":"exec"},
+                            "mini-gpt-o5.desp":{"type":"exec"}
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+def load_disk():
+    if os.path.exists(DISK):
+        with open(DISK,"r") as f:
+            return json.load(f)
+    return default_fs()
+
+def save_disk():
+    with open(DISK,"w") as f:
+        json.dump(filesystem,f,indent=2)
+
+filesystem = load_disk()
+path = []
+
+# ================= FILESYSTEM =================
+
+def get_dir():
+    ref = filesystem
+    for p in path:
+        ref = ref["content"][p]
+    return ref
+
+def list_dir():
+    return get_dir()["content"]
+
+def mkdir(name):
+    ref=list_dir()
+    if name in ref:
+        return "exists"
+    ref[name]={"type":"folder","perm":"777","content":{}}
+    save_disk()
+    return "folder created"
+
+def touch(name):
+    ref=list_dir()
+    if name in ref:
+        return "exists"
+    ref[name]={"type":"file","perm":"666","data":""}
+    save_disk()
+    return "file created"
+
+def remove(name):
+    ref=list_dir()
+    if name not in ref:
+        return "not found"
+    del ref[name]
+    save_disk()
+    return "deleted"
+
+# ================= APPS =================
+
+def calc_app(output):
+    output.append("Calculator ready.")
+    allowed={k:getattr(math,k) for k in dir(math) if not k.startswith("_")}
+    def handle(inp):
+        if inp=="exit": return "exit"
+        try:
+            res=eval(inp,{"__builtins__":None},allowed)
+            output.append(str(res))
+        except:
+            output.append("error")
+    return handle
+
+def note_app(output):
+    output.append("Notepad opened.")
+    def handle(inp):
+        if inp=="exit": return "exit"
+        output.append(inp)
+    return handle
+
+def mini_ai(output):
+    output.append("mini-GPT online.")
+    def handle(inp):
+        if inp=="exit": return "exit"
+        output.append("mini-GPT: learning...")
+    return handle
+
+APPS={
+    "calc":calc_app,
+    "note":note_app,
+    "mini-gpt-o5":mini_ai
+}
+
+# ================= HOME =================
+
+class Home(QWidget):
+    def __init__(self,launch):
+        super().__init__()
+        self.launch=launch
+        grid=QGridLayout()
+
+        for i,(name,key) in enumerate([
+            ("Shell","shell"),
+            ("Files","files"),
+            ("Calculator","calc"),
+            ("Notepad","note"),
+            ("mini-GPT","mini-gpt-o5")
+        ]):
+            b=QPushButton(name)
+            b.clicked.connect(lambda _,k=key:self.launch(k))
+            grid.addWidget(b,i//2,i%2)
+
+        self.setLayout(grid)
+
+# ================= FILES =================
+
+class Files(QWidget):
+    def __init__(self,back,launch):
+        super().__init__()
+        self.back=back
+        self.launch=launch
+        self.layout=QVBoxLayout()
+
+        self.label=QLabel()
+        self.layout.addWidget(self.label)
+
+        self.scroll=QScrollArea()
+        self.container=QWidget()
+        self.v=QVBoxLayout()
+        self.container.setLayout(self.v)
+        self.scroll.setWidget(self.container)
+        self.scroll.setWidgetResizable(True)
+
+        self.layout.addWidget(self.scroll)
+
+        backbtn=QPushButton("Back")
+        backbtn.clicked.connect(self.back)
+        self.layout.addWidget(backbtn)
+
+        self.setLayout(self.layout)
+        self.refresh()
+
+    def refresh(self):
+        self.label.setText("/"+"/".join(path))
+
+        while self.v.count():
+            w=self.v.takeAt(0).widget()
+            if w: w.deleteLater()
+
+        for name,obj in list_dir().items():
+            btn=QPushButton(name)
+            btn.clicked.connect(lambda _,n=name:self.open(n))
+            self.v.addWidget(btn)
+
+    def open(self,name):
+        obj=list_dir()[name]
+
+        if obj["type"]=="folder":
+            path.append(name)
+            self.refresh()
+
+        elif obj["type"]=="exec":
+            self.launch(name.replace(".desp",""))
+
+# ================= MAIN OS =================
+
+class AlphaOS(QWidget):
+
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("AlphaOS v2")
+        self.resize(750,500)
+
+        self.layout=QVBoxLayout()
+
+        self.title=QLabel("AlphaOS Booting...")
+        self.title.setAlignment(Qt.AlignCenter)
+
+        self.home=Home(self.launch)
+        self.files=Files(self.show_home,self.launch)
+
+        self.output=QTextEdit()
+        self.output.setReadOnly(True)
+
+        self.input=QLineEdit()
+        self.input.returnPressed.connect(self.handle)
+
+        self.layout.addWidget(self.title)
+        self.layout.addWidget(self.home)
+        self.layout.addWidget(self.files)
+        self.layout.addWidget(self.output)
+        self.layout.addWidget(self.input)
+
+        self.setLayout(self.layout)
+
+        self.current=None
+        self.processes=[]
+
+        self.boot()
+
+    # ---------- BOOT ----------
+    def boot(self):
+        self.home.hide()
+        self.files.hide()
+        self.output.hide()
+        self.input.hide()
+
+        QTimer.singleShot(1200,self.show_home)
+
+    def show_home(self):
+        self.title.setText("AlphaOS")
+        self.home.show()
+        self.files.hide()
+        self.output.hide()
+        self.input.hide()
+
+    def show_shell(self):
+        self.home.hide()
+        self.files.hide()
+        self.output.show()
+        self.input.show()
+        self.prompt()
+
+    def show_files(self):
+        self.home.hide()
+        self.files.show()
+        self.output.hide()
+        self.input.hide()
+        self.files.refresh()
+
+    def prompt(self):
+        self.output.append(f"AlphaOS:/{'/'.join(path)}>")
+
+    # ---------- LAUNCH ----------
+    def launch(self,name):
+        if name=="shell":
+            self.show_shell()
+            return
+        if name=="files":
+            self.show_files()
+            return
+
+        if name in APPS:
+            self.show_shell()
+            self.processes.append(name)
+            self.current=APPS[name](self.output)
+
+    # ---------- SHELL ----------
+    def handle(self):
+        text=self.input.text().strip()
+        self.input.clear()
+        self.output.append(text)
+
+        if self.current:
+            if self.current(text)=="exit":
+                self.current=None
+                self.show_home()
+            return
+
+        parts=text.split()
+        if not parts: return
+
+        cmd=parts[0]
+
+        if cmd=="help":
+            self.output.append("ls cd mkdir touch rm ps clear reboot exit")
+
+        elif cmd=="ls":
+            for k,v in list_dir().items():
+                self.output.append(f"{k} [{v['type']}]")
+
+        elif cmd=="cd":
+            if len(parts)<2: return
+            if parts[1]==".." and path:
+                path.pop()
+            elif parts[1] in list_dir():
+                if list_dir()[parts[1]]["type"]=="folder":
+                    path.append(parts[1])
+
+        elif cmd=="mkdir":
+            self.output.append(mkdir(parts[1]))
+
+        elif cmd=="touch":
+            self.output.append(touch(parts[1]))
+
+        elif cmd=="rm":
+            self.output.append(remove(parts[1]))
+
+        elif cmd=="ps":
+            self.output.append("Running: "+", ".join(self.processes))
+
+        elif cmd=="clear":
+            self.output.clear()
+
+        elif cmd=="reboot":
+            save_disk()
+            QApplication.quit()
+            os.execl(sys.executable,sys.executable,*sys.argv)
+
+        elif cmd=="exit":
+            self.show_home()
+
+        else:
+            self.output.append("unknown command")
+
+        self.prompt()
+
+# ================= RUN =================
+
+if __name__=="__main__":
+    app=QApplication(sys.argv)
+    osys=AlphaOS()
+    osys.show()
+    sys.exit(app.exec_())
